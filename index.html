@@ -5,160 +5,195 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>UK Contra Dance Finder</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/leaflet.css" />
-    <link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:wght@400;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Merriweather:wght@300;400;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/js-yaml/4.1.0/js-yaml.min.js"></script>
 </head>
 <body>
-    <h1>UK Contra Dance Finder</h1>
+    <div class="header">
+        <h1>UK Contra Dance Finder</h1>
+        <div class="contact-info">
+            To include an event or report an issue, email g (at) y1d2 (dot) com 
+        </div>
+        <nav>
+            <ul>
+                <li><a href="index.html">Find a Dance</a></li>
+                <li><a href="https://www.sbcds.org/contradance/whatis/">New to Contra?</a></li>
+            </ul>
+        </nav>
+    </div>
     
-    <div class="tabs">
-        <div class="tab active" onclick="openTab('find')">Find a Dance</div>
-        <div class="tab" onclick="openTab('about')">About Contra</div>
+    <div class="search-box">
+        <input type="text" id="city-input" placeholder="Enter a city name">
+        <button onclick="findNearbyDances()">Find Dances</button>
     </div>
-
-    <div id="find" class="tab-content active">
-        <div class="section">
-            <div class="search-box">
-                <input type="text" id="city-input" placeholder="Enter a city name">
-                <button onclick="findNearbyDances()">Find Dances</button>
-            </div>
-        </div>
+    
+    <div id="map"></div>
         
-        <div class="section">
-            <div id="map"></div>
-        </div>
-        
-        <div class="section">
-            <h2>Upcoming Events</h2>
-            <ul id="events-list"></ul>
-        </div>
+    <div class="section">
+        <h2>Upcoming Events</h2>
+        <ul id="events-list"></ul>
     </div>
 
-    <div id="about" class="tab-content">
-        <div class="section">
-            <h2>About Contra Dancing</h2>
-            <p>Contra dancing is a folk dance made up of long lines of couples. It has mixed origins from English country dance, Scottish, and French dance styles in the 17th century. It's fun, energetic, and social!</p>
-        </div>
-    </div>
-
+    <!-- Include Leaflet.js and your custom script file -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/leaflet.js"></script>
+    <script src="uk-contra-events.js"></script> <!-- This loads the event data -->
     <script>
         let map;
-        let events = [];
-
-        async function initMap() {
-            map = L.map('map').setView([54.5, -4], 5);  // Center on UK
+        let events = eventData.events; // Use the events from the external JS file
+    
+        function initMap() {
+            map = L.map('map').setView([54.5, -4], 6); // Initial view centered on the UK
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                 attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
             }).addTo(map);
-
-            await loadEvents();
-            addEventsToMap(events);
-            populateEventsList(events);
+    
+            populateEventsList(events); // Populate the list with all events on load
+            addEventsToMap(events); // Add all events to the map on load
         }
-
-        async function loadEvents() {
-        try {
-            const corsProxy = 'https://cors-anywhere.herokuapp.com/';
-            const yamlUrl = 'https://folkdance.page/index.yaml?date=all&country=UK&styles=contra';
-            const response = await fetch(corsProxy + yamlUrl);
-            const yamlText = await response.text();
-            const data = jsyaml.load(yamlText);
-            events = data.events;
-            populateEventsList(events);
-            addEventsToMap(events);
-        } catch (error) {
-            console.error('Error loading events:', error);
-            alert('Failed to load events. Please try again later.');
-        }
-    }
     
         function findNearbyDances() {
-            const cityName = document.getElementById('city-input').value.toLowerCase();
-            const cityEvent = events.find(event => event.city.toLowerCase() === cityName);
-
-            if (cityEvent) {
-                map.setView([cityEvent.latitude, cityEvent.longitude], 10);
-                showNearbyEvents(cityEvent);
-            } else {
-                alert('City not found. Showing all events.');
-                showAllEvents();
+            const cityInput = document.getElementById('city-input').value.trim();
+            if (!cityInput) {
+                return; // Don't do anything if input is empty
             }
+    
+            // Geocode the input city using OpenStreetMap's Nominatim API
+            const geocodeUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(cityInput)},UK`;
+    
+            fetch(geocodeUrl)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.length > 0) {
+                        const userLocation = {
+                            latitude: parseFloat(data[0].lat),
+                            longitude: parseFloat(data[0].lon)
+                        };
+                        const nearbyEvents = findNearbyEvents(userLocation, 50); // Find all events within 50 km radius
+                        if (nearbyEvents.length > 0) {
+                            map.setView([userLocation.latitude, userLocation.longitude], 10); // Zoom to the user's city
+                            populateEventsList(nearbyEvents);
+                            addEventsToMap(nearbyEvents);
+                        } else {
+                            // If no events are found within 50 km, find the closest one
+                            const nearestEvent = findNearestEvent(userLocation);
+                            if (nearestEvent) {
+                                map.setView([nearestEvent.latitude, nearestEvent.longitude], 10);
+                                populateEventsList([nearestEvent]);
+                                addEventsToMap([nearestEvent]);
+                                document.getElementById('events-list').innerHTML += '<p>No exact matches, showing closest event(s) instead.</p>';
+                            } else {
+                                // If no events are found at all, reset map view
+                                map.setView([54.5, -4], 6);
+                                document.getElementById('events-list').innerHTML = '<p>No events found near this location.</p>';
+                            }
+                        }
+                    } else {
+                        // If geocoding fails, reset map view
+                        map.setView([54.5, -4], 6);
+                        document.getElementById('events-list').innerHTML = '<p>No events found near this location.</p>';
+                    }
+                })
+                .catch(() => {
+                    // Handle errors, reset map view if geocoding fails
+                    map.setView([54.5, -4], 6);
+                    document.getElementById('events-list').innerHTML = '<p>Error fetching data. Please try again.</p>';
+                });
         }
-
-        function showNearbyEvents(centralEvent) {
-            const nearbyEvents = events.filter(event => {
-                const distance = getDistance(centralEvent, event);
-                return distance <= 100; // Show events within 100 km
+    
+        function findNearbyEvents(userLocation, radiusKm) {
+            return events.filter(event => {
+                const distance = getDistance(userLocation, { latitude: event.latitude, longitude: event.longitude });
+                return distance <= radiusKm;
             });
-
-            populateEventsList(nearbyEvents);
-            addEventsToMap(nearbyEvents);
         }
-
-        function showAllEvents() {
-            populateEventsList(events);
-            addEventsToMap(events);
-            map.setView([54.5, -4], 5);  // Reset to UK view
+    
+        function findNearestEvent(userLocation) {
+            return events
+                .map(event => {
+                    const distance = getDistance(userLocation, { latitude: event.latitude, longitude: event.longitude });
+                    return { ...event, distance };
+                })
+                .sort((a, b) => a.distance - b.distance)[0];
         }
-
-        function getDistance(event1, event2) {
-            const R = 6371; // Earth's radius in km
-            const dLat = (event2.latitude - event1.latitude) * Math.PI / 180;
-            const dLon = (event2.longitude - event1.longitude) * Math.PI / 180;
-            const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-                      Math.cos(event1.latitude * Math.PI / 180) * Math.cos(event2.latitude * Math.PI / 180) *
-                      Math.sin(dLon/2) * Math.sin(dLon/2);
-            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    
+        function getDistance(coord1, coord2) {
+            const R = 6371; // Radius of the Earth in km
+            const dLat = (coord2.latitude - coord1.latitude) * Math.PI / 180;
+            const dLon = (coord2.longitude - coord1.longitude) * Math.PI / 180;
+            const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                      Math.cos(coord1.latitude * Math.PI / 180) * Math.cos(coord2.latitude * Math.PI / 180) *
+                      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
             return R * c;
         }
-
+    
         function populateEventsList(eventsToShow) {
             const eventsList = document.getElementById('events-list');
             eventsList.innerHTML = '';
+    
             eventsToShow.forEach(event => {
-                const li = document.createElement('li');
-                li.innerHTML = `<strong>${event.name}</strong> - ${event.date} at ${event.venue}, ${event.city}<br>
-                                <small>How to get there: <a href="#" onclick="showTransportInfo('${event.city}')">View transport options</a></small>`;
-                eventsList.appendChild(li);
+                if (event.recurringEvents && event.recurringEvents.length > 0) {
+                    const upcomingEvent = event.recurringEvents.sort((a, b) => new Date(a.date) - new Date(b.date))[0];
+                    addEventToList(eventsList, event, upcomingEvent);
+                } else if (event.date) {
+                    addEventToList(eventsList, event, event);
+                } else {
+                    const li = document.createElement('li');
+                    li.innerHTML = `
+                        <strong>${event.name}</strong><br>
+                        No upcoming dates. Please check <a href="${event.links[0]}" target="_blank">their website</a> for updates.<br>
+                        ${event.venue || 'Venue TBA'}, ${event.city}<br>
+                        ${event.price || 'Price TBA'}<br>
+                    `;
+                    eventsList.appendChild(li);
+                }
             });
         }
-
+    
+        function addEventToList(eventsList, event, eventDetails) {
+            const li = document.createElement('li');
+            li.innerHTML = `
+                <strong>${event.name}</strong><br>
+                ${formatDate(eventDetails.date)}<br>
+                ${eventDetails.startTime || ''} - ${eventDetails.endTime || ''}<br>
+                ${event.venue || 'Venue TBA'}, ${event.city}<br>
+                ${eventDetails.bands ? 'Bands: ' + eventDetails.bands.join(', ') + '<br>' : ''}
+                ${eventDetails.callers ? 'Callers: ' + eventDetails.callers.join(', ') + '<br>' : ''}
+                ${event.price || 'Price TBA'}<br>
+                ${event.links && event.links.length > 0 ? `<a href="${event.links[0]}" target="_blank">More Info</a>` : ''}
+            `;
+            eventsList.appendChild(li);
+        }
+    
+        function formatDate(dateString) {
+            if (!dateString) return "No Date Available";
+            const date = new Date(dateString);
+            return date.toLocaleDateString('en-GB', { 
+                weekday: 'long', 
+                year: 'numeric', 
+                month: 'long', 
+                day: 'numeric'
+            });
+        }
+    
         function addEventsToMap(eventsToShow) {
             map.eachLayer(layer => {
                 if (layer instanceof L.Marker) {
                     map.removeLayer(layer);
                 }
             });
-
+    
             eventsToShow.forEach(event => {
                 if (event.latitude && event.longitude) {
                     L.marker([event.latitude, event.longitude])
                         .addTo(map)
-                        .bindPopup(`<strong>${event.name}</strong><br>${event.date}<br>${event.venue}, ${event.city}`);
+                        .bindPopup(`<strong>${event.name}</strong><br>${event.city}`);
                 }
             });
         }
-
-        function showTransportInfo(city) {
-            alert(`To get to ${city}, consider using National Rail for train services or National Express for coach services. Check their websites for specific routes and times.`);
-        }
-
-        function openTab(tabName) {
-            const tabs = document.getElementsByClassName('tab');
-            const tabContents = document.getElementsByClassName('tab-content');
-            
-            for (let i = 0; i < tabs.length; i++) {
-                tabs[i].classList.remove('active');
-                tabContents[i].classList.remove('active');
-            }
-            
-            document.getElementById(tabName).classList.add('active');
-            event.currentTarget.classList.add('active');
-        }
-
+    
         window.onload = initMap;
     </script>
+    
 </body>
 </html>
