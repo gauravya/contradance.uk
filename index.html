@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UK Contra Dance Finder</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/leaflet.css" />
+    <link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:wght@400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/js-yaml/4.1.0/js-yaml.min.js"></script>
+</head>
+<body>
+    <h1>UK Contra Dance Finder</h1>
+    
+    <div class="tabs">
+        <div class="tab active" onclick="openTab('find')">Find a Dance</div>
+        <div class="tab" onclick="openTab('about')">About Contra</div>
+    </div>
+
+    <div id="find" class="tab-content active">
+        <div class="section">
+            <div class="search-box">
+                <input type="text" id="city-input" placeholder="Enter a city name">
+                <button onclick="findNearbyDances()">Find Dances</button>
+            </div>
+        </div>
+        
+        <div class="section">
+            <div id="map"></div>
+        </div>
+        
+        <div class="section">
+            <h2>Upcoming Events</h2>
+            <ul id="events-list"></ul>
+        </div>
+    </div>
+
+    <div id="about" class="tab-content">
+        <div class="section">
+            <h2>About Contra Dancing</h2>
+            <p>Contra dancing is a folk dance made up of long lines of couples. It has mixed origins from English country dance, Scottish, and French dance styles in the 17th century. It's fun, energetic, and social!</p>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/leaflet.js"></script>
+    <script>
+        let map;
+        let events = [];
+
+        async function initMap() {
+            map = L.map('map').setView([54.5, -4], 5);  // Center on UK
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            }).addTo(map);
+
+            await loadEvents();
+            addEventsToMap(events);
+            populateEventsList(events);
+        }
+
+        async function loadEvents() {
+            try {
+                const response = await fetch('https://folkdance.page/index.yaml?date=all&country=UK&styles=contra');
+                const yamlText = await response.text();
+                const data = jsyaml.load(yamlText);
+                events = data.events;
+            } catch (error) {
+                console.error('Error loading events:', error);
+                alert('Failed to load events. Please try again later.');
+            }
+        }
+
+        function findNearbyDances() {
+            const cityName = document.getElementById('city-input').value.toLowerCase();
+            const cityEvent = events.find(event => event.city.toLowerCase() === cityName);
+
+            if (cityEvent) {
+                map.setView([cityEvent.latitude, cityEvent.longitude], 10);
+                showNearbyEvents(cityEvent);
+            } else {
+                alert('City not found. Showing all events.');
+                showAllEvents();
+            }
+        }
+
+        function showNearbyEvents(centralEvent) {
+            const nearbyEvents = events.filter(event => {
+                const distance = getDistance(centralEvent, event);
+                return distance <= 100; // Show events within 100 km
+            });
+
+            populateEventsList(nearbyEvents);
+            addEventsToMap(nearbyEvents);
+        }
+
+        function showAllEvents() {
+            populateEventsList(events);
+            addEventsToMap(events);
+            map.setView([54.5, -4], 5);  // Reset to UK view
+        }
+
+        function getDistance(event1, event2) {
+            const R = 6371; // Earth's radius in km
+            const dLat = (event2.latitude - event1.latitude) * Math.PI / 180;
+            const dLon = (event2.longitude - event1.longitude) * Math.PI / 180;
+            const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                      Math.cos(event1.latitude * Math.PI / 180) * Math.cos(event2.latitude * Math.PI / 180) *
+                      Math.sin(dLon/2) * Math.sin(dLon/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            return R * c;
+        }
+
+        function populateEventsList(eventsToShow) {
+            const eventsList = document.getElementById('events-list');
+            eventsList.innerHTML = '';
+            eventsToShow.forEach(event => {
+                const li = document.createElement('li');
+                li.innerHTML = `<strong>${event.name}</strong> - ${event.date} at ${event.venue}, ${event.city}<br>
+                                <small>How to get there: <a href="#" onclick="showTransportInfo('${event.city}')">View transport options</a></small>`;
+                eventsList.appendChild(li);
+            });
+        }
+
+        function addEventsToMap(eventsToShow) {
+            map.eachLayer(layer => {
+                if (layer instanceof L.Marker) {
+                    map.removeLayer(layer);
+                }
+            });
+
+            eventsToShow.forEach(event => {
+                if (event.latitude && event.longitude) {
+                    L.marker([event.latitude, event.longitude])
+                        .addTo(map)
+                        .bindPopup(`<strong>${event.name}</strong><br>${event.date}<br>${event.venue}, ${event.city}`);
+                }
+            });
+        }
+
+        function showTransportInfo(city) {
+            alert(`To get to ${city}, consider using National Rail for train services or National Express for coach services. Check their websites for specific routes and times.`);
+        }
+
+        function openTab(tabName) {
+            const tabs = document.getElementsByClassName('tab');
+            const tabContents = document.getElementsByClassName('tab-content');
+            
+            for (let i = 0; i < tabs.length; i++) {
+                tabs[i].classList.remove('active');
+                tabContents[i].classList.remove('active');
+            }
+            
+            document.getElementById(tabName).classList.add('active');
+            event.currentTarget.classList.add('active');
+        }
+
+        window.onload = initMap;
+    </script>
+</body>
+</html>
