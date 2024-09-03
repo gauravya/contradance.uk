@@ -11,13 +11,6 @@ const eventData = {
             "styles": ["contra"],
             "recurringEvents": [
                 {
-                    "date": "2024-08-31",
-                    "startTime": "19:30",
-                    "endTime": "23:00",
-                    "bands": ["Box of Frogs"],
-                    "callers": ["Lauren Catlin", "Sally Vernon"]
-                },
-                {
                     "date": "2024-09-28",
                     "startTime": "19:30",
                     "endTime": "23:00",
@@ -48,24 +41,17 @@ const eventData = {
         },
         {
             "name": "Sheffield Scratch Contra",
-            "links": ["https://www.facebook.com/events/1050398396434069/"],
-            "date": "2024-09-05",
-            "startTime": "19:30",
-            "endTime": "22:30",
-            "country": "UK",
             "city": "Sheffield",
+            "country": "UK",
             "venue": "Memorial Hall",
             "address": "Forbes Rd, Hillsborough, Sheffield S6 2NW",
             "latitude": 53.401290,
             "longitude": -1.499740,
             "styles": ["contra"],
-            "workshop": false,
-            "social": true,
-            "price": "£5",
-            "organisation": "Sheffield Scratch Contra",
-            "accessibleVenue": true,
-            "contact": "sheffieldscratchcontra@gmail.com",
-            "details": "Open for all callers and musicians to participate!"
+            "date": "2024-09-05",
+            "startTime": "19:30",
+            "endTime": "22:30",
+            "links": ["https://www.facebook.com/events/1050398396434069/"]
         },
         {
             "name": "Edinburgh Contra Dance",
@@ -79,8 +65,6 @@ const eventData = {
             "date": "2024-09-07",
             "startTime": "19:45",
             "endTime": "23:00", 
-            "workshop": true,
-            "social": true,
             "bands": ["Sam Baxter and Heather McAslan"],
             "callers": ["Rachel Shapiro Wallace"],
             "price": "£10-£20; Under 12s go in for free!",
