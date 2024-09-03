@@ -113,143 +113,208 @@
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/leaflet.js"></script>
     <script src="events.js"></script>
+
     <script>
-      document.addEventListener("DOMContentLoaded", () => {
-        const map = L.map("map").setView([54.5, -4], 6); // Center on the UK
-        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-          attribution: "© OpenStreetMap contributors",
-        }).addTo(map);
+document.addEventListener('DOMContentLoaded', () => {
+    const map = L.map('map').setView([54.5, -4], 6); // Center on the UK
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap contributors'
+    }).addTo(map);
 
-        window.findNearbyEvents = function () {
-          const cityInput = document.getElementById("city-input").value.trim();
-          if (!cityInput) {
-            alert("Please enter a city name.");
-            return;
-          }
+    function displayEvents(events) {
+        const eventsContainer = document.getElementById('events');
+        eventsContainer.innerHTML = '';
 
-          const geocodeUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
-            cityInput
-          )},UK`;
-
-          fetch(geocodeUrl)
-            .then((response) => response.json())
-            .then((data) => {
-              if (data.length > 0) {
-                const userLocation = {
-                  latitude: parseFloat(data[0].lat),
-                  longitude: parseFloat(data[0].lon),
-                };
-                displayNearbyEvents(userLocation, map);
-              } else {
-                alert("City not found. Please try again.");
-              }
-            })
-            .catch(() => {
-              alert("Error fetching location. Please try again.");
-            });
-        };
-
-        function displayNearbyEvents(userLocation, map) {
-          const eventsContainer = document.getElementById("events");
-          eventsContainer.innerHTML = "";
-
-          const upcomingEvents = eventData.events
-            .flatMap((event) => {
-              if (event.recurringEvents) {
-                return event.recurringEvents.map((re) => ({
-                  ...event,
-                  ...re,
-                }));
-              }
-              return event;
-            })
-            .filter((event) => {
-              const eventDate = new Date(event.date);
-              return eventDate >= new Date();
-            });
-
-          let nearbyEvents = upcomingEvents.filter((event) => {
-            const distance = getDistance(userLocation, {
-              latitude: event.latitude,
-              longitude: event.longitude,
-            });
-            return distance <= 50; // Initial filter: 50 km radius
-          });
-
-          if (nearbyEvents.length === 0) {
-            // Expand search radius if no events found within 50 km
-            nearbyEvents = upcomingEvents
-              .sort((a, b) => {
-                const distanceA = getDistance(userLocation, {
-                  latitude: a.latitude,
-                  longitude: a.longitude,
-                });
-                const distanceB = getDistance(userLocation, {
-                  latitude: b.latitude,
-                  longitude: b.longitude,
-                });
-                return distanceA - distanceB; // Sort by nearest first
-              })
-              .slice(0, 3); // Show the top 3 closest events
-          }
-
-          if (nearbyEvents.length === 0) {
-            eventsContainer.innerHTML = "<p>No nearby events found.</p>";
-            return;
-          }
-
-          map.eachLayer((layer) => {
+        map.eachLayer(layer => {
             if (layer instanceof L.Marker) {
-              map.removeLayer(layer);
+                map.removeLayer(layer);
             }
-          });
+        });
 
-          nearbyEvents.forEach((event) => {
-            const eventElement = document.createElement("div");
-            eventElement.className = "event";
+        const groupedEvents = groupEventsByName(events);
+
+        groupedEvents.forEach(eventsAtName => {
+            const eventElement = document.createElement('div');
+            eventElement.className = 'event';
+            eventElement.style.border = '1px solid #ddd';
+            eventElement.style.padding = '10px';
+            eventElement.style.marginBottom = '10px';
+
+            const firstEvent = eventsAtName[0];
+            const nextEvent = eventsAtName.find(event => new Date(event.date) >= new Date());
+
             eventElement.innerHTML = `
-                        <h2>${event.name}</h2>
-                        <p><strong>Location:</strong> ${event.city}, ${
-              event.country
-            }</p>
-                        <p><strong>Venue:</strong> ${event.venue}</p>
-                        <p><strong>Date:</strong> ${event.date}</p>
-                        <p><strong>Time:</strong> ${event.startTime} - ${
-              event.endTime
-            }</p>
-                        <p><strong>Styles:</strong> ${event.styles.join(
-                          ", "
-                        )}</p>
-                        <p><a href="${
-                          event.links[0]
-                        }" target="_blank">More Info</a></p>
-                    `;
+                <h2>${firstEvent.name}</h2>
+                <p><strong>Location:</strong> ${firstEvent.city}, ${firstEvent.country}</p>
+                <p><strong>Venue:</strong> ${firstEvent.venue}</p>
+                <p><strong>Next Date:</strong> ${formatDate(nextEvent.date)}</p>
+                <p><strong>Time:</strong> ${nextEvent.startTime} - ${nextEvent.endTime}</p>
+                <p><a href="#" class="view-all-dates">View All Dates</a></p>
+                <div class="all-dates" style="display: none;">
+            `;
+
+            eventsAtName.forEach(event => {
+                eventElement.querySelector('.all-dates').innerHTML += `
+                    <p><strong>Date:</strong> ${formatDate(event.date)} | <strong>Time:</strong> ${event.startTime} - ${event.endTime}</p>
+                `;
+            });
+
+            eventElement.querySelector('.all-dates').innerHTML += '</div>';
+            eventElement.innerHTML += `<p><a href="${firstEvent.links ? firstEvent.links[0] : '#'}" target="_blank">More Info</a></p>`;
+
             eventsContainer.appendChild(eventElement);
 
-            L.marker([event.latitude, event.longitude])
-              .addTo(map)
-              .bindPopup(
-                `<strong>${event.name}</strong><br>${event.city}<br>${event.date} ${event.startTime}`
-              );
-          });
+            const popupContent = `
+                <strong>${firstEvent.name}</strong><br>
+                ${formatDate(nextEvent.date)} ${nextEvent.startTime} - ${nextEvent.endTime}
+            `;
 
-          map.setView([userLocation.latitude, userLocation.longitude], 10);
+            L.marker([firstEvent.latitude, firstEvent.longitude])
+                .addTo(map)
+                .bindPopup(popupContent);
+
+            // Toggle view all dates
+            eventElement.querySelector('.view-all-dates').addEventListener('click', (e) => {
+                e.preventDefault();
+                const allDatesDiv = eventElement.querySelector('.all-dates');
+                if (allDatesDiv.style.display === 'none') {
+                    allDatesDiv.style.display = 'block';
+                    e.target.innerText = 'Hide Dates';
+                } else {
+                    allDatesDiv.style.display = 'none';
+                    e.target.innerText = 'View All Dates';
+                }
+            });
+        });
+    }
+
+    function groupEventsByName(events) {
+        const grouped = {};
+        events.forEach(event => {
+            if (!grouped[event.name]) {
+                grouped[event.name] = [];
+            }
+            grouped[event.name].push(event);
+        });
+        return Object.values(grouped);
+    }
+
+    function formatDate(dateString) {
+        const options = { year: 'numeric', month: 'long', day: 'numeric' };
+        return new Date(dateString).toLocaleDateString('en-GB', options);
+    }
+
+    // Start with an empty events list
+    document.getElementById('events').innerHTML = "<p>Please enter a city name to find events.</p>";
+
+    window.findNearbyEvents = function () {
+        const cityInput = document.getElementById("city-input").value.trim();
+        if (!cityInput) {
+            alert("Please enter a city name.");
+            return;
         }
 
-        function getDistance(coord1, coord2) {
-          const R = 6371; // Radius of the Earth in km
-          const dLat = ((coord2.latitude - coord1.latitude) * Math.PI) / 180;
-          const dLon = ((coord2.longitude - coord1.longitude) * Math.PI) / 180;
-          const a =
+        const geocodeUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(cityInput)},UK`;
+
+        console.log('Geocode URL:', geocodeUrl);
+
+        fetch(geocodeUrl)
+            .then((response) => {
+                console.log('Response status:', response.status);
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                return response.json();
+            })
+            .then((data) => {
+                console.log('Received data:', data); // Log the received data
+                if (Array.isArray(data) && data.length > 0) {
+                    const userLocation = {
+                        latitude: parseFloat(data[0].lat),
+                        longitude: parseFloat(data[0].lon),
+                    };
+                    console.log('User location:', userLocation);
+                    displayNearbyEvents(userLocation, map);
+                } else {
+                    console.error('Data is not an array or is empty:', data);
+                    alert("City not found. Please try again.");
+                }
+            })
+            .catch((error) => {
+                console.error('Error fetching data:', error);
+                alert(`Error fetching location. ${error.message}`);
+            });
+    };
+
+    function displayNearbyEvents(userLocation, map) {
+        const eventsContainer = document.getElementById("events");
+        eventsContainer.innerHTML = "";
+
+        const upcomingEvents = eventData.events
+            .flatMap((event) => {
+                if (event.recurringEvents) {
+                    return event.recurringEvents.map((re) => ({
+                        ...event,
+                        ...re,
+                    }));
+                }
+                return event;
+            })
+            .filter((event) => {
+                const eventDate = new Date(event.date);
+                return eventDate >= new Date();
+            });
+
+        let nearbyEvents = upcomingEvents.filter((event) => {
+            const distance = getDistance(userLocation, {
+                latitude: event.latitude,
+                longitude: event.longitude,
+            });
+            return distance <= 50; // Initial filter: 50 km radius
+        });
+
+        if (nearbyEvents.length === 0) {
+            // Expand search radius if no events found within 50 km
+            nearbyEvents = upcomingEvents
+                .sort((a, b) => {
+                    const distanceA = getDistance(userLocation, {
+                        latitude: a.latitude,
+                        longitude: a.longitude,
+                    });
+                    const distanceB = getDistance(userLocation, {
+                        latitude: b.latitude,
+                        longitude: b.longitude,
+                    });
+                    return distanceA - distanceB; // Sort by nearest first
+                })
+                .slice(0, 3); // Show the top 3 closest events
+        }
+
+        if (nearbyEvents.length === 0) {
+            eventsContainer.innerHTML = "<p>No nearby events found.</p>";
+            return;
+        }
+
+        displayEvents(nearbyEvents);
+
+        map.setView([userLocation.latitude, userLocation.longitude], 10);
+    }
+
+    function getDistance(coord1, coord2) {
+        const R = 6371; // Radius of the Earth in km
+        const dLat = ((coord2.latitude - coord1.latitude) * Math.PI) / 180;
+        const dLon = ((coord2.longitude - coord1.longitude) * Math.PI) / 180;
+        const a =
             Math.sin(dLat / 2) * Math.sin(dLat / 2) +
             Math.cos((coord1.latitude * Math.PI) / 180) *
-              Math.cos((coord2.latitude * Math.PI) / 180) *
-              Math.sin(dLon / 2) *
-              Math.sin(dLon / 2);
-          const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-          return R * c;
-        }
-      });
+                Math.cos((coord2.latitude * Math.PI) / 180) *
+                Math.sin(dLon / 2) *
+                Math.sin(dLon / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        return R * c;
+    }
+});
+
     </script>
   </body>
 </html>
