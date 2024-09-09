@@ -21,11 +21,164 @@
         </div>
 
         <div id="map"></div>
-
         <div id="events"></div>
     </div>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/leaflet.js"></script>
-    <script src="script.js"></script>
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <script>
+        document.addEventListener("DOMContentLoaded", () => {
+          const map = L.map("map").setView([54.5, -4], 6); // Center on the UK
+          L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+            attribution: "© OpenStreetMap contributors",
+          }).addTo(map);
+    
+          let eventData = null;
+    
+          // Load event data from a separate JSON file (replace with actual path)
+          fetch('events.json')
+            .then(response => response.json())
+            .then(data => {
+              eventData = data;
+            })
+            .catch(error => console.error("Error loading events:", error));
+    
+          // Function to display events
+          function displayEvents(events) {
+            const eventsContainer = document.getElementById("events");
+            eventsContainer.innerHTML = ""; // Clear previous events
+            map.eachLayer(layer => {
+              if (layer instanceof L.Marker) {
+                map.removeLayer(layer);
+              }
+            });
+    
+            const uniqueEvents = new Map();
+            events.forEach(event => {
+              if (!uniqueEvents.has(event.name)) {
+                const eventElement = document.createElement("div");
+                eventElement.className = "event";
+    
+                let eventDatesHTML = "";
+                if (event.recurringDates) {
+                  eventDatesHTML += `<details><summary>Show Dates</summary><div>`;
+                  event.recurringDates.forEach(re => {
+                    if (isFutureEvent(re.date)) {
+                      eventDatesHTML += `<p><strong>Date:</strong> ${formatDate(re.date)} | <strong>Time:</strong> ${re.startTime} - ${re.endTime}</p>`;
+                    }
+                  });
+                  eventDatesHTML += `</div></details>`;
+                }
+    
+                if (event.start_date && event.end_date && isFutureEvent(event.start_date)) {
+                  eventDatesHTML += `<p><strong>Dates:</strong> ${formatDate(event.start_date)} to ${formatDate(event.end_date)}</p>`;
+                }
+    
+                // Event HTML content
+                eventElement.innerHTML = `
+                  <h2>${event.name}</h2>
+                  <p><strong>Location:</strong> ${event.city}, ${event.country}</p>
+                  <p><strong>Venue:</strong> ${event.venue}</p>
+                  ${eventDatesHTML}
+                  <p><a href="${event.links ? event.links[0] : "#"}" target="_blank">More Info</a></p>
+                `;
+    
+                eventsContainer.appendChild(eventElement);
+    
+                // Add marker to map
+                const popupContent = `<strong>${event.name}</strong><br>${event.venue}<br>${eventDatesHTML}`;
+                L.marker([event.latitude, event.longitude]).addTo(map).bindPopup(popupContent);
+    
+                uniqueEvents.set(event.name, eventElement);
+              }
+            });
+          }
+    
+          // Function to check if the event is in the future
+          function isFutureEvent(dateString) {
+            const eventDate = new Date(dateString);
+            const today = new Date();
+            return eventDate >= today; // Only future events
+          }
+    
+          // Format the date to a readable format
+          function formatDate(dateString) {
+            const options = { year: "numeric", month: "long", day: "numeric" };
+            return new Date(dateString).toLocaleDateString("en-GB", options);
+          }
+    
+          // Search for events by city name or broader search terms
+          window.findNearbyEvents = function () {
+            const searchTerm = document.getElementById("city-input").value.trim().toLowerCase();
+            if (!searchTerm) {
+              alert("Please enter a search term.");
+              return;
+            }
+    
+            const matchingEvents = findEventsByTerm(searchTerm);
+            if (matchingEvents.length > 0) {
+              displayEvents(matchingEvents);  // Show matching events
+              return;
+            }
+    
+            // If no match, use geocoding to find nearby locations
+            const geocodeUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchTerm)},UK`;
+    
+            fetch(geocodeUrl)
+              .then(response => response.json())
+              .then(data => {
+                if (data.length > 0) {
+                  const userLocation = {
+                    latitude: parseFloat(data[0].lat),
+                    longitude: parseFloat(data[0].lon),
+                  };
+                  displayNearbyEvents(userLocation);
+                } else {
+                  alert("Location not found. Please try again.");
+                }
+              })
+              .catch(error => alert(`Error fetching location: ${error.message}`));
+          };
+    
+          // Find events by broader terms like city, venue, or event name
+          function findEventsByTerm(term) {
+            return eventData.events.filter(event => {
+              const cityMatch = event.city && event.city.toLowerCase().includes(term);
+              const nameMatch = event.name.toLowerCase().includes(term);
+              const venueMatch = event.venue && event.venue.toLowerCase().includes(term);
+              return cityMatch || nameMatch || venueMatch;
+            });
+          }
+    
+          // Display nearby events based on user location (within a 100 km radius)
+          function displayNearbyEvents(userLocation) {
+            const nearbyEvents = eventData.events.filter(event => {
+              const distance = getDistance(userLocation, { latitude: event.latitude, longitude: event.longitude });
+              return distance <= 100;  // Events within 100 km
+            });
+    
+            if (nearbyEvents.length === 0) {
+              document.getElementById("events").innerHTML = "<p>No nearby events found.</p>";
+            } else {
+              displayEvents(nearbyEvents);
+              map.setView([userLocation.latitude, userLocation.longitude], 10);  // Recenter the map
+            }
+          }
+    
+          // Calculate distance between two coordinates (Haversine formula)
+          function getDistance(coord1, coord2) {
+            const R = 6371;  // Earth's radius in km
+            const dLat = (coord2.latitude - coord1.latitude) * Math.PI / 180;
+            const dLon = (coord2.longitude - coord1.longitude) * Math.PI / 180;
+            const a = Math.sin(dLat / 2) ** 2 +
+              Math.cos(coord1.latitude * Math.PI / 180) * Math.cos(coord2.latitude * Math.PI / 180) *
+              Math.sin(dLon / 2) ** 2;
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            return R * c;  // Distance in km
+          }
+        });
+      </script>
+        
+  </body>
+  </html>
 </body>
 </html>
